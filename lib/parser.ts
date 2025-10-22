@@ -6,37 +6,59 @@ export type Message = {
     ciudad_departamento: string;
     producto: string;
     observaciones?: string;
-    };
+};
 
-    export function parseTextFile(content: string, targetDate: string): Message[] {
-    const blocks = content.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+export function parseTextFile(content: string, targetDate: string): Message[] {
     const results: Message[] = [];
 
-    for (const block of blocks) {
-        const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-        if (lines.length < 5) continue;
-        const [nombre, telefono, direccion, ciudad_departamento, producto, ...rest] = lines;
+    const blocks = content.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
 
-        const dateMatch = block.match(/\b(\d{4}-\d{2}-\d{2})\b/) ?? block.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
-        let parsedDate = targetDate;
-        if (dateMatch) {
-        const d = dateMatch[1];
-        if (d.includes('/')) {
-            const [dd, mm, yyyy] = d.split('/');
-            parsedDate = `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
-        } else parsedDate = d;
+    for (const block of blocks) {
+        const lines = block
+            .split(/\n+/)
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+
+        if (lines.length < 4) continue;
+
+        let nombre = '';
+        let telefono = '';
+        let direccion = '';
+        let ciudad_departamento = '';
+        let producto = '';
+        let observaciones = '';
+        let fecha = targetDate;
+
+        for (const line of lines) {
+            if (/observaciones?/i.test(line)) {
+                observaciones = line.replace(/observaciones?:?/i, '').trim();
+            } else if (/^\d{4}-\d{2}-\d{2}$/.test(line)) {
+                fecha = line;
+            } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(line)) {
+                const [dd, mm, yyyy] = line.split('/');
+                fecha = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+            }
         }
-        if (targetDate && parsedDate !== targetDate) continue;
+
+        nombre = nombre || lines[0];
+        telefono = telefono || lines[1] || '';
+        direccion = direccion || lines[2] || '';
+        ciudad_departamento = ciudad_departamento || lines[3] || '';
+        producto = producto || lines[4] || '';
+
+        if (!nombre || !telefono || !direccion || !ciudad_departamento || !producto)
+            continue;
 
         results.push({
-        date: parsedDate,
-        nombre,
-        telefono,
-        direccion,
-        ciudad_departamento,
-        producto,
-        observaciones: rest.length ? rest.join(' ') : ''
+            date: fecha,
+            nombre,
+            telefono,
+            direccion,
+            ciudad_departamento,
+            producto,
+            observaciones,
         });
     }
+
     return results;
 }
