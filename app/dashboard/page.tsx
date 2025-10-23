@@ -1,39 +1,58 @@
-"use client";
-import React, { useState } from "react";
-import FileUpload from "@/app/components/FileUpload";
-import MessageCard from "@/app/components/MessageCard";
-import { Message } from "@/lib/parser";
-import { useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import ThemeToggle from "@/app/components/ThemeToggle";
-import DateSelector from "@/app/components/DateSelector";
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import FileUpload from '@/app/components/FileUpload';
+import MessageCard from '@/app/components/MessageCard';
+import ThemeToggle from '@/app/components/ThemeToggle';
+import DateSelector from '@/app/components/DateSelector';
+import LogoutButton from '@/app/components/LogoutButton';
+import { Message } from '@/lib/parser';
+import { saveMessages } from '@/lib/messagesApi';
 
 export default function DashboardPage() {
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) window.location.href = "/login";
-    });
-  }, []);
-
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<boolean[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  // ✅ Aquí colocamos la función para abrir el PDF
+  // 🔒 Verificar sesión activa
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) window.location.href = '/login';
+    });
+  }, []);
+
+  // 🧾 Generar PDF
   async function openPdf(selectedMessages: Message[]) {
-    const res = await fetch("/api/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('/api/generate-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: selectedMessages }),
     });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    window.open(url, '_blank');
   }
 
+  // 💾 Guardar mensajes en BD
+  const handleSaveToDB = async () => {
+    try {
+      setSaving(true);
+      await saveMessages(messages);
+      alert('✅ Registros guardados correctamente');
+    } catch (err) {
+      console.error(err);
+      alert('❌ Error al guardar los registros');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 🧩 Manejo de selección y edición
   const handleSelectChange = (index: number, checked: boolean) => {
     setSelected((prev) => {
       const copy = [...prev];
@@ -50,11 +69,22 @@ export default function DashboardPage() {
     });
   };
 
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Generador de Rótulos</h1>
+  // 🧠 Si no hay registros
+  const isEmpty = messages.length === 0;
 
-      <div className="flex gap-4 items-center mb-6">
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors px-6 py-8">
+      {/* Header */}
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold tracking-tight">🧾 Generador de Rótulos</h1>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <LogoutButton />
+        </div>
+      </header>
+
+      {/* Controles principales */}
+      <div className="flex flex-wrap gap-4 items-center mb-8">
         <DateSelector value={selectedDate} onChange={setSelectedDate} />
         <FileUpload
           selectedDate={selectedDate}
@@ -63,43 +93,47 @@ export default function DashboardPage() {
             setSelected(msgs.map(() => true));
           }}
         />
+        {messages.length > 0 && (
+          <>
+            <button
+              onClick={handleSaveToDB}
+              disabled={saving}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar en BD'}
+            </button>
+
+            <button
+              onClick={() => {
+                const selectedMessages = messages.filter((_, i) => selected[i]);
+                openPdf(selectedMessages);
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+            >
+              Generar PDF
+            </button>
+          </>
+        )}
       </div>
 
-      <button
-        onClick={() => setMessages(messages)}
-        className="px-4 py-2 bg-green-600 text-white rounded"
-      >
-        Guardar en BD
-      </button>
-
-      {/* Botón para generar PDF */}
-      {messages.length > 0 && (
-        <button
-          onClick={() => {
-            const selectedMessages = messages.filter((_, i) => selected[i]);
-            openPdf(selectedMessages);
-          }}
-          className="mb-6 px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          Generar PDF
-        </button>
+      {/* Contenido */}
+      {isEmpty ? (
+        <div className="text-center text-gray-500 dark:text-gray-400 py-16">
+          <p className="text-lg">📂 Aún no has cargado ningún archivo .txt</p>
+          <p className="text-sm">Selecciona una fecha y sube un archivo para comenzar.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {messages.map((msg, i) => (
+            <MessageCard
+              key={i}
+              message={msg}
+              onUpdate={(updated) => handleUpdate(i, updated)}
+              onSelectChange={(checked) => handleSelectChange(i, checked)}
+            />
+          ))}
+        </div>
       )}
-
-      {/* Grid de cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {messages.map((msg, i) => (
-          <MessageCard
-            key={i}
-            message={msg}
-            onUpdate={(updated) => handleUpdate(i, updated)}
-            onSelectChange={(checked) => handleSelectChange(i, checked)}
-          />
-        ))}
-      </div>
-
-      <div className="flex justify-end mb-4">
-        <ThemeToggle />
-      </div>
     </div>
   );
 }
