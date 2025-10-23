@@ -69,7 +69,6 @@ export default function DashboardPage() {
     });
   };
 
-  // 🧠 Si no hay registros
   const isEmpty = messages.length === 0;
 
   return (
@@ -86,13 +85,17 @@ export default function DashboardPage() {
       {/* Controles principales */}
       <div className="flex flex-wrap gap-4 items-center mb-8">
         <DateSelector value={selectedDate} onChange={setSelectedDate} />
-        <FileUpload
-          selectedDate={selectedDate}
-          onParsed={(msgs) => {
-            setMessages(msgs);
-            setSelected(msgs.map(() => true));
-          }}
-        />
+<FileUpload
+  selectedDate={selectedDate}
+  onParsed={(msgs) => {
+    const fechas = [...new Set(msgs.map((m) => m.date))];
+    const maxDate = fechas.sort().reverse()[0];
+    setSelectedDate(maxDate);
+    const filtered = msgs.filter((m) => m.date === maxDate);
+    setMessages(filtered);
+    setSelected(filtered.map(() => true));
+  }}
+/>
         {messages.length > 0 && (
           <>
             <button

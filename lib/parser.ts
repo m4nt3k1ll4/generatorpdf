@@ -1,64 +1,85 @@
 export type Message = {
-    date: string;
-    nombre: string;
-    telefono: string;
-    direccion: string;
-    ciudad_departamento: string;
-    producto: string;
-    observaciones?: string;
+  date: string;
+  nombre: string;
+  telefono: string;
+  direccion: string;
+  ciudad_departamento: string;
+  producto: string;
+  cantidad?: number;
+  observaciones?: string;
 };
 
-export function parseTextFile(content: string, targetDate: string): Message[] {
-    const results: Message[] = [];
+/**
+ * Parser robusto para archivos de WhatsApp con formato:
+ * [22/10/25, 8:41:55 a.m.] Daniel Jimenez: Nombre
+ * 3100000000
+ * Dirección
+ * Ciudad, Departamento
+ * (Cantidad) PRODUCTO Nx
+ * Observaciones: ...
+ */
+export function parseTextFile(content: string): Message[] {
+  const results: Message[] = [];
 
-    const blocks = content.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+  // Divide por cada encabezado de mensaje de WhatsApp
+  const blocks = content.split(/\[\d{2}\/\d{2}\/\d{2},\s*\d{1,2}:\d{2}:\d{2}/).slice(1);
 
-    for (const block of blocks) {
-        const lines = block
-            .split(/\n+/)
-            .map(l => l.trim())
-            .filter(l => l.length > 0);
+  for (const block of blocks) {
+    // Extraer la fecha del encabezado
+    const dateMatch = block.match(/^(\d{2})\/(\d{2})\/(\d{2})/);
+    const [dd, mm, yy] = dateMatch ? [dateMatch[1], dateMatch[2], dateMatch[3]] : ['00', '00', '00'];
+    const parsedDate = `20${yy}-${mm}-${dd}`;
 
-        if (lines.length < 4) continue;
+    // Extraer el nombre del cliente
+    const nameMatch = block.match(/:\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+)\n/);
+    const nombre = nameMatch ? nameMatch[1].trim() : '';
 
-        let nombre = '';
-        let telefono = '';
-        let direccion = '';
-        let ciudad_departamento = '';
-        let producto = '';
-        let observaciones = '';
-        let fecha = targetDate;
+    // Dividir líneas útiles
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
 
-        for (const line of lines) {
-            if (/observaciones?/i.test(line)) {
-                observaciones = line.replace(/observaciones?:?/i, '').trim();
-            } else if (/^\d{4}-\d{2}-\d{2}$/.test(line)) {
-                fecha = line;
-            } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(line)) {
-                const [dd, mm, yyyy] = line.split('/');
-                fecha = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-            }
-        }
+    // Teléfono (primer número de 10 dígitos)
+    const telefono = lines.find((l) => /\b3\d{9}\b/.test(l)) || '';
 
-        nombre = nombre || lines[0];
-        telefono = telefono || lines[1] || '';
-        direccion = direccion || lines[2] || '';
-        ciudad_departamento = ciudad_departamento || lines[3] || '';
-        producto = producto || lines[4] || '';
+    // Dirección (línea con palabra típica)
+    const direccion =
+      lines.find((l) =>
+        /(calle|cra|cl|av|transv|carrera|transversal|manzana|mz|barrio|vereda)/i.test(l)
+      ) || '';
 
-        if (!nombre || !telefono || !direccion || !ciudad_departamento || !producto)
-            continue;
+    // Ciudad y departamento (siguiente línea después de dirección)
+    const cityIndex = direccion ? lines.indexOf(direccion) : -1;
+    const ciudad_departamento =
+      cityIndex !== -1 && lines[cityIndex + 1] ? lines[cityIndex + 1] : '';
 
-        results.push({
-            date: fecha,
-            nombre,
-            telefono,
-            direccion,
-            ciudad_departamento,
-            producto,
-            observaciones,
-        });
+    // Producto y cantidad
+    const productoLine = lines.find((l) => /producto/i.test(l)) || '';
+    let cantidad = 1;
+    let producto = productoLine;
+
+    const cantidadMatch = productoLine.match(/^(\d+)\s+/);
+    if (cantidadMatch) {
+      cantidad = parseInt(cantidadMatch[1], 10);
+      producto = productoLine.replace(/^(\d+)\s+/, '').trim();
     }
 
-    return results;
+    // Observaciones
+    const obsMatch = block.match(/observaciones?:\s*(.+)$/i);
+    const observaciones = obsMatch ? obsMatch[1].trim() : '';
+
+    // Validar que existan los mínimos requeridos
+    if (nombre && telefono && direccion && ciudad_departamento && producto) {
+      results.push({
+        date: parsedDate,
+        nombre,
+        telefono,
+        direccion,
+        ciudad_departamento,
+        producto,
+        cantidad,
+        observaciones,
+      });
+    }
+  }
+
+  return results;
 }
