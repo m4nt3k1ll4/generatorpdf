@@ -29,10 +29,10 @@ export default function DashboardPage() {
   // 🧾 Generar PDF
   async function openPdf(selectedMessages: Message[]) {
     const res = await fetch('/api/generate-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: selectedMessages }),
-    });
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ messages: selectedMessages }),
+});
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
