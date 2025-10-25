@@ -98,7 +98,7 @@ export default function LoginPage() {
       </form>
 
       <footer className="text-xs text-slate-400 dark:text-slate-500 mt-6">
-        © {new Date().getFullYear()} PdfGenerator
+        © {new Date().getFullYear()} RotuleGenerator
       </footer>
     </div>
   );

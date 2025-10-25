@@ -65,7 +65,7 @@ return (
     </div>
 
     {editing && (
-        <div className="absolute inset-0 bg-white/90 dark:bg-slate-900/90 flex items-center justify-center p-4 rounded-lg">
+        <div className="fixed inset-0 z-50 bg-white/90 dark:bg-slate-900/90 flex items-center justify-center p-4 rounded-lg">
         <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-md w-full max-w-sm">
             <h3 className="font-semibold mb-2">Editar registro</h3>
             {Object.entries(editMsg).map(

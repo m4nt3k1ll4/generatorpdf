@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Message } from '@/lib/parser';
 
-// 🧾 Genera un PDF con 9 tarjetas (3x3) por hoja
+// 🧾 Genera un PDF con 9 tarjetas (3x3) por hoja con formato limpio
 export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const pageWidth = 595; // A4 width
@@ -11,11 +11,13 @@ export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array>
   const cardHeight = (pageHeight - margin * 2) / 3;
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   let page = pdfDoc.addPage([pageWidth, pageHeight]);
   let i = 0;
 
   for (const msg of messages) {
+    // Crear nueva página cada 9 tarjetas
     if (i > 0 && i % 9 === 0) {
       page = pdfDoc.addPage([pageWidth, pageHeight]);
     }
@@ -27,7 +29,7 @@ export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array>
     const x = margin + col * cardWidth;
     const y = pageHeight - margin - (row + 1) * cardHeight;
 
-    // Dibujar borde de la tarjeta
+    // 🟦 Dibujar borde de la tarjeta
     page.drawRectangle({
       x,
       y,
@@ -37,24 +39,46 @@ export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array>
       borderWidth: 1,
     });
 
-    // Texto
-    const text = [
-      msg.nombre,
-      msg.telefono,
-      msg.direccion,
-      msg.ciudad_departamento,
-      msg.producto,
+    // 📄 Preparar texto con formato
+    const lines = [
+      `${msg.nombre}`,
+      `${msg.telefono}`,
+      `${msg.direccion}`,
+      `${msg.ciudad_departamento}`,
+      `${msg.producto}`,
       msg.observaciones ? `Obs: ${msg.observaciones}` : '',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean);
 
-    page.drawText(text, {
-      x: x + 10,
-      y: y + cardHeight - 30,
-      size: 10,
-      font,
-      color: rgb(0, 0, 0),
-      lineHeight: 12,
-    });
+    // ✏️ Coordenadas iniciales de texto
+    let textY = y + cardHeight - 25;
+    const lineHeight = 12;
+    const fontSize = 10;
+    const textX = x + 10;
+    const maxWidth = cardWidth - 25;
+
+    for (const line of lines) {
+      const words = line.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (testWidth > maxWidth) {
+          page.drawText(currentLine, { x: textX, y: textY, size: fontSize, font });
+          textY -= lineHeight;
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      // Dibujar la última línea del bloque
+      if (currentLine) {
+        page.drawText(currentLine, { x: textX, y: textY, size: fontSize, font });
+        textY -= lineHeight;
+      }
+    }
 
     i++;
   }

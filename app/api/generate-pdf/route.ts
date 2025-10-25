@@ -5,16 +5,17 @@ export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
 
-    if (!Array.isArray(messages)) {
+    if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages array required' }, { status: 400 });
     }
 
     const pdfBytes = await generatePdfBytes(messages);
 
-    return new NextResponse(pdfBytes, {
+    // ✅ Envolver en un Blob (tipo válido para NextResponse)
+    return new NextResponse(new Blob([pdfBytes], { type: 'application/pdf' }), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline; filename=rotulos.pdf',
+        'Content-Disposition': 'inline; filename="rotulos.pdf"',
       },
     });
   } catch (error) {
