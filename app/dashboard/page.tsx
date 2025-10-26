@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import FileUpload from '@/app/components/FileUpload';
@@ -8,37 +7,70 @@ import ThemeToggle from '@/app/components/ThemeToggle';
 import DateSelector from '@/app/components/DateSelector';
 import LogoutButton from '@/app/components/LogoutButton';
 import { Message } from '@/lib/parser';
-import { saveMessages } from '@/lib/messagesApi';
+import { loadMessagesByDate, saveMessages } from '@/lib/messagesApi';
 
 export default function DashboardPage() {
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<boolean[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selectAll, setSelectAll] = useState(true); // 🆕 Estado para controlar selección global
+  const [loading, setLoading] = useState(true); // 🆕 Para mostrar “Cargando registros...”
 
-  // 🔒 Verificar sesión activa
+  // 🔒 Verificar sesión activa al cargar el dashboard
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) window.location.href = '/login';
     });
   }, []);
 
-  // 🧾 Generar PDF
+  // 🧭 Cargar automáticamente la última fecha registrada en la base de datos
+  useEffect(() => {
+    async function loadLatestDate() {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('date')
+        .order('date', { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        setSelectedDate(data[0].date);
+      } else {
+        const today = new Date().toISOString().slice(0, 10);
+        setSelectedDate(today);
+      }
+    }
+    loadLatestDate();
+  }, []);
+
+  // 📦 Cargar mensajes automáticamente al cambiar la fecha
+  useEffect(() => {
+    async function fetchMessages() {
+      if (!selectedDate) return;
+      setLoading(true);
+      const loaded = await loadMessagesByDate(selectedDate);
+      setMessages(loaded);
+      setSelected(loaded.map(() => true));
+      setSelectAll(true);
+      setLoading(false);
+    }
+    fetchMessages();
+  }, [selectedDate]);
+
+  // 🧾 Generar PDF con los mensajes seleccionados
   async function openPdf(selectedMessages: Message[]) {
     const res = await fetch('/api/generate-pdf', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ messages: selectedMessages }),
-});
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: selectedMessages }),
+    });
+
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   }
 
-  // 💾 Guardar mensajes en BD
+  // 💾 Guardar los mensajes cargados en Supabase
   const handleSaveToDB = async () => {
     try {
       setSaving(true);
@@ -52,15 +84,18 @@ export default function DashboardPage() {
     }
   };
 
-  // 🧩 Manejo de selección y edición
+  // 🧩 Actualizar selección individual
   const handleSelectChange = (index: number, checked: boolean) => {
     setSelected((prev) => {
       const copy = [...prev];
       copy[index] = checked;
+      // Si algún elemento queda sin seleccionar → desmarcamos "selectAll"
+      setSelectAll(copy.every((v) => v));
       return copy;
     });
   };
 
+  // ✏️ Actualizar datos editados dentro de una tarjeta
   const handleUpdate = (index: number, updated: Message) => {
     setMessages((prev) => {
       const copy = [...prev];
@@ -69,11 +104,18 @@ export default function DashboardPage() {
     });
   };
 
+  // 🆕 Seleccionar o deseleccionar todos los registros a la vez
+  const toggleSelectAll = () => {
+    const newState = !selectAll;
+    setSelectAll(newState);
+    setSelected(messages.map(() => newState));
+  };
+
   const isEmpty = messages.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors px-6 py-8">
-      {/* Header */}
+      {/* 🧭 Header */}
       <header className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold tracking-tight">🧾 Generador de Rótulos</h1>
         <div className="flex items-center gap-3">
@@ -82,20 +124,33 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Controles principales */}
+      {/* 🎛️ Controles principales */}
       <div className="flex flex-wrap gap-4 items-center mb-8">
-        <DateSelector value={selectedDate} onChange={setSelectedDate} />
-<FileUpload
-  selectedDate={selectedDate}
-  onParsed={(msgs) => {
-    const fechas = [...new Set(msgs.map((m) => m.date))];
-    const maxDate = fechas.sort().reverse()[0];
-    setSelectedDate(maxDate);
-    const filtered = msgs.filter((m) => m.date === maxDate);
-    setMessages(filtered);
-    setSelected(filtered.map(() => true));
-  }}
-/>
+        {selectedDate && <DateSelector value={selectedDate} onChange={setSelectedDate} />}
+
+        <FileUpload
+          selectedDate={selectedDate || new Date().toISOString().slice(0, 10)}
+          onParsed={(msgs) => {
+            const fechas = [...new Set(msgs.map((m) => m.date))];
+            const maxDate = fechas.sort().reverse()[0];
+            setSelectedDate(maxDate);
+            const filtered = msgs.filter((m) => m.date === maxDate);
+            setMessages(filtered);
+            setSelected(filtered.map(() => true));
+            setSelectAll(true);
+          }}
+        />
+
+        {/* 🆕 Botón seleccionar todo */}
+        {messages.length > 0 && (
+          <button
+            onClick={toggleSelectAll}
+            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md transition-colors"
+          >
+            {selectAll ? 'Deseleccionar todo' : 'Seleccionar todo'}
+          </button>
+        )}
+
         {messages.length > 0 && (
           <>
             <button
@@ -119,11 +174,15 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Contenido */}
-      {isEmpty ? (
+      {/* 🕓 Indicador de carga */}
+      {loading ? (
+        <div className="text-center text-gray-500 dark:text-gray-400 py-16">
+          <p className="text-lg animate-pulse">Cargando registros...</p>
+        </div>
+      ) : isEmpty ? (
         <div className="text-center text-gray-500 dark:text-gray-400 py-16">
           <p className="text-lg">📂 Aún no has cargado ningún archivo .txt</p>
-          <p className="text-sm">Selecciona una fecha y sube un archivo para comenzar.</p>
+          <p className="text-sm">Selecciona una fecha o sube un archivo para comenzar.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

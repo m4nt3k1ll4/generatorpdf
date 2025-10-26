@@ -22,3 +22,18 @@ export async function updateMessage(id: string, fields: Partial<Message>) {
     .eq('id', id);
   if (error) console.error('Error al actualizar:', error);
 }
+
+export async function loadMessagesByDate(date: string): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('date', date)
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('❌ Error al cargar mensajes:', error);
+    return [];
+  }
+
+  return data as Message[];
+}
