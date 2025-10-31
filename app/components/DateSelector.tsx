@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import {
   Popover,
@@ -18,7 +18,8 @@ export default function DateSelector({
   onChange: (val: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState<Date>(new Date(value));
+  const date = parse(value, "yyyy-MM-dd", new Date());
+  const [selected, setSelected] = React.useState<Date>(date);
 
   const handleSelect = (date: Date) => {
     setSelected(date);
@@ -119,11 +120,10 @@ function CalendarGrid({
             <button
               key={d}
               onClick={() => onSelect(date)}
-              className={`p-2 rounded-full text-sm ${
-                isSelected
-                  ? "bg-blue-600 text-white"
-                  : "hover:bg-slate-200 dark:hover:bg-slate-700"
-              }`}
+              className={`p-2 rounded-full text-sm ${isSelected
+                ? "bg-blue-600 text-white"
+                : "hover:bg-slate-200 dark:hover:bg-slate-700"
+                }`}
             >
               {d}
             </button>
