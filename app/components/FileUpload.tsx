@@ -23,7 +23,6 @@ export default function FileUpload({ selectedDate, onParsed }: FileUploadProps) 
 
     try {
       const text = await file.text();
-      console.log('📄 Contenido leído del archivo:', text.slice(0, 100)); // debug opcional
 
       const parsed = parseTextFile(text);
       console.log('✅ Mensajes parseados:', parsed);
@@ -57,7 +56,7 @@ export default function FileUpload({ selectedDate, onParsed }: FileUploadProps) 
         disabled={loading}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50"
       >
-        {loading ? 'Procesando...' : 'Seleccionar .txt'}
+        {loading ? 'Procesando...' : 'Seleccionar archivo 📄'}
       </button>
 
       {fileName && (
