@@ -1,3 +1,6 @@
+import { format } from "date-fns";
+import { getColombiaMobile } from "./phoneUtils";
+
 export type Message = {
   date: string;
   nombre: string;
@@ -24,96 +27,47 @@ export type Message = {
  */
 export function parseTextFile(content: string): Message[] {
   const results: Message[] = [];
+  // Regex para detectar el encabezado de mensaje de WhatsApp tipo: [21/10/25, 9:27 a.m.]
+  const whatsappHeaderRegex = /\[\d{2}\/\d{2}\/\d{2},.*?\]/;
 
-  // 🔍 Divide los mensajes por encabezados de WhatsApp
+  // Dividir el texto usando cada encabezado como separador y limpiar resultados vacíos
   const blocks = content
-    .split(/\[\d{2}\/\d{2}\/\d{2},\s*\d{1,2}:\d{2}:\d{2}.*?\]/)
-    .map(b => b.trim())
-    .filter(Boolean);
+    .split(whatsappHeaderRegex)  // Separa cada bloque por fecha/hora
+    .map(b => b.trim())          // Elimina espacios al inicio/fin
+    .filter(b => b.length > 0);  // Elimina líneas vacías
 
   for (const block of blocks) {
-    // 🗓️ Buscar fecha dentro del bloque
-    const dateMatch = block.match(/(\d{2})\/(\d{2})\/(\d{2})/);
-    let parsedDate = new Date().toISOString().slice(0, 10);
-
-    if (dateMatch) {
-      const [, dd, mm, yy] = dateMatch;
-      if (parseInt(mm) >= 1 && parseInt(mm) <= 12 && parseInt(dd) >= 1 && parseInt(dd) <= 31) {
-        parsedDate = `20${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-      }
-    }
-
-    // 🧠 Separar líneas limpias
+    // Convertir el bloque en líneas limpias
     const lines = block
       .split(/\n+/)
-      .map(l => l.trim().replace(/\s+/g, ' '))
+      .map(l => l.trim())
       .filter(Boolean);
 
-    if (lines.length < 3) continue;
-
-    // 👤 Nombre (después de “: ” si existe)
-    const nameMatch = block.match(/:\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s.]+)\n/);
-    const nombre = nameMatch ? nameMatch[1].trim() : lines[0];
-
-    // 📞 Teléfono — acepta espacios o puntos dentro
-    const telefonoMatch = block.match(/\b3[\d\s.]{7,}\b/);
-    const telefono = telefonoMatch
-      ? telefonoMatch[0].replace(/[^\d]/g, '') // limpia espacios y puntos
-      : '';
-
-    // 📍 Dirección
-    const direccion =
-      lines.find((l) =>
-        /(calle|cra|cl|av|transv|carrera|transversal|mz|barrio|vereda|oficina)/i.test(l)
-      ) || '';
-
-    // 🏙️ Ciudad y departamento
-    let ciudad_departamento = '';
-    const cityIndex = direccion ? lines.indexOf(direccion) : -1;
-    if (cityIndex !== -1) {
-      const possibleCity = lines[cityIndex + 1] || '';
-      ciudad_departamento = possibleCity
-        .replace(/\./g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    let cedula = '';
+    const nombre = lines[0].split(':')[1].trim();
+    let telefono = getColombiaMobile(lines[1]);
+    if (!telefono) {
+      cedula = lines[1];
+      telefono = lines[2];
     }
+    let index = cedula ? 3 : 2;
+    const direccion = lines[index++];
+    const ciudad_departamento = lines[index++];
+    const producto = lines[index++];
+    const cantidad = Number(producto.replace(/[^0-9]/g, ""));
+    const observaciones = lines.slice(index).join(' ');
+    const date = format(new Date(), "yyyy-MM-dd");
 
-    // 💊 Producto
-    let productoLine =
-      lines.find((l) => /(producto|combo|shilajit|suplemento|kit)/i.test(l)) || '';
-    let cantidad = 1;
-    let producto = productoLine;
-
-    // Si no se encontró “PRODUCTO”, intenta la última línea como producto
-    if (!productoLine && lines.length >= 3) {
-      productoLine = lines[lines.length - 1];
-      producto = productoLine;
-    }
-
-    // Detectar cantidad al inicio o al final (ej. “2 PRODUCTO N1”, “SHILAJIT X2”)
-    const cantidadMatch = productoLine.match(/^(\d+)\s+/) || productoLine.match(/x(\d+)$/i);
-    if (cantidadMatch) {
-      cantidad = parseInt(cantidadMatch[1], 10);
-      producto = producto.replace(/(\d+\s+|x\d+)$/i, '').trim();
-    }
-
-    // 📝 Observaciones (si existen)
-    const obsMatch = block.match(/observaciones?:\s*(.+)$/i);
-    const observaciones = obsMatch ? obsMatch[1].trim() : '';
-
-    // ✅ Validación mínima
-    if (nombre && telefono && direccion && ciudad_departamento && producto) {
-      results.push({
-        date: parsedDate,
-        nombre,
-        telefono,
-        direccion,
-        ciudad_departamento,
-        producto,
-        cantidad,
-        observaciones,
-      });
-    }
+    results.push({
+      date,
+      nombre,
+      telefono,
+      direccion,
+      ciudad_departamento,
+      producto,
+      cantidad,
+      observaciones,
+    });
   }
 
   return results;

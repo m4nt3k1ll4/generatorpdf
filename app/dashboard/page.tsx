@@ -1,5 +1,6 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { format } from "date-fns";
 import { supabase } from '@/lib/supabaseClient';
 import FileUpload from '@/app/components/FileUpload';
 import MessageCard from '@/app/components/MessageCard';
@@ -9,8 +10,10 @@ import LogoutButton from '@/app/components/LogoutButton';
 import { Message } from '@/lib/parser';
 import { loadMessagesByDate, saveMessages } from '@/lib/messagesApi';
 
+const today = format(new Date(), "yyyy-MM-dd");
+
 export default function DashboardPage() {
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(today);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<boolean[]>([]);
   const [saving, setSaving] = useState(false);
@@ -36,7 +39,6 @@ export default function DashboardPage() {
       if (!error && data && data.length > 0) {
         setSelectedDate(data[0].date);
       } else {
-        const today = new Date().toISOString().slice(0, 10);
         setSelectedDate(today);
       }
     }
