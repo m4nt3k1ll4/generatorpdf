@@ -17,3 +17,6 @@ ALTER TABLE messages
 ADD COLUMN IF NOT EXISTS cantidad INTEGER DEFAULT 1,
 ADD COLUMN IF NOT EXISTS observaciones TEXT;
 -- Actualiza las filas existentes para establecer un valor predeterminado para la nueva columna 'cantidad'
+
+ALTER TABLE messages
+ADD COLUMN IF NOT EXISTS cedula TEXT;

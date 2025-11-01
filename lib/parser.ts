@@ -4,6 +4,7 @@ import { getColombiaMobile } from "./phoneUtils";
 export type Message = {
   date: string;
   nombre: string;
+  cedula?: string;
   telefono: string;
   direccion: string;
   ciudad_departamento: string;
@@ -12,55 +13,92 @@ export type Message = {
   observaciones?: string;
 };
 
-/**
- * Parser robusto para archivos de WhatsApp con soporte extendido:
- * ✅ Acepta ambos formatos:
- * [22/10/25, 8:41:55 a.m.] Daniel Jimenez: Nombre...
- * [22/10/25, 8:41:55 a.m.] Daniel Jimenez: Nombre...
- * 
- * Permite:
- * - Teléfonos con espacios o puntos.
- * - Ciudades sin coma (Bogota cundinamarca).
- * - Productos sin palabra "PRODUCTO".
- * - Formato con líneas extra (como ID o cédula).
- * - Campos opcionales (observaciones).
- */
+const whatsappHeaderRegex = /\[\d{2}\/\d{2}\/\d{2},.*?\]/;
+
+/* --- Helpers --- */
+function splitBlocks(content: string) {
+  return content
+    .split(whatsappHeaderRegex) // Dividir por encabezados de WhatsApp
+    .map(b => b.trim()) // Eliminar espacios en blanco
+    .filter(b => b.length > 0); // Filtrar bloques vacíos
+}
+
+function splitLines(block: string) {
+  return block
+    .split(/\n+/) // Dividir por saltos de línea
+    .map(l => l.trim()) // Eliminar espacios en blanco
+    .filter(Boolean); // Filtrar líneas vacías
+}
+
+function parseName(line: string) {
+  // El formato es "Nombre: Juan Pérez"
+  return line
+    .split(":")[1]?.trim() ?? ""; // Extraer el nombre después de ":" y eliminar espacios adicionales
+}
+
+// Elimina todos los caracteres que no son numéricos
+function removeNonNumeric(str: string) {
+  return str.replace(/\D/g, "");
+}
+
+// Retorna teléfono móvil colombiano o undefined
+function parsePhoneOrCedula(lines: string[]) {
+  let telefono = getColombiaMobile(lines[1]);
+  let cedula = "";
+  let indexStart = 2;
+
+  if (!telefono) {
+    cedula = lines[1];
+    telefono = lines[2];
+    indexStart = 3;
+  }
+
+  return {
+    indexStart,
+    telefono: removeNonNumeric(telefono),
+    cedula: removeNonNumeric(cedula)
+  };
+}
+
+// Extrae solo números de la cadena y la convierte a número
+function parseCantidad(producto: string) {
+  return Number(producto.replace(/[^0-9]/g, "")) || undefined;
+}
+
+// Parsea el cuerpo restante del mensaje a partir de la línea de inicio
+function parseBody(lines: string[], startIndex: number) {
+  let i = startIndex;
+  const direccion = lines[i++];
+  const ciudad_departamento = lines[i++];
+  const producto = lines[i++];
+  const cantidad = parseCantidad(producto);
+  const observaciones = lines.slice(i).join(" ") || undefined;
+
+  return { direccion, ciudad_departamento, producto, cantidad, observaciones };
+}
+
+// Retorna la fecha actual en formato "yyyy-MM-dd" usando date-fns
+function today() {
+  return format(new Date(), "yyyy-MM-dd");
+}
+
+/* --- Main parser --- */
 export function parseTextFile(content: string): Message[] {
   const results: Message[] = [];
-  // Regex para detectar el encabezado de mensaje de WhatsApp tipo: [21/10/25, 9:27 a.m.]
-  const whatsappHeaderRegex = /\[\d{2}\/\d{2}\/\d{2},.*?\]/;
-
-  // Dividir el texto usando cada encabezado como separador y limpiar resultados vacíos
-  const blocks = content
-    .split(whatsappHeaderRegex)  // Separa cada bloque por fecha/hora
-    .map(b => b.trim())          // Elimina espacios al inicio/fin
-    .filter(b => b.length > 0);  // Elimina líneas vacías
+  const blocks = splitBlocks(content);
 
   for (const block of blocks) {
-    // Convertir el bloque en líneas limpias
-    const lines = block
-      .split(/\n+/)
-      .map(l => l.trim())
-      .filter(Boolean);
+    const lines = splitLines(block);
+    const nombre = parseName(lines[0]);
 
-    let cedula = '';
-    const nombre = lines[0].split(':')[1].trim();
-    let telefono = getColombiaMobile(lines[1]);
-    if (!telefono) {
-      cedula = lines[1];
-      telefono = lines[2];
-    }
-    let index = cedula ? 3 : 2;
-    const direccion = lines[index++];
-    const ciudad_departamento = lines[index++];
-    const producto = lines[index++];
-    const cantidad = Number(producto.replace(/[^0-9]/g, ""));
-    const observaciones = lines.slice(index).join(' ');
-    const date = format(new Date(), "yyyy-MM-dd");
+    const { telefono, cedula, indexStart } = parsePhoneOrCedula(lines);
+    const { direccion, ciudad_departamento, producto, cantidad, observaciones } =
+      parseBody(lines, indexStart);
 
     results.push({
-      date,
+      date: today(),
       nombre,
+      cedula,
       telefono,
       direccion,
       ciudad_departamento,

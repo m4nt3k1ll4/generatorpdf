@@ -41,11 +41,12 @@ export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array>
 
     // 📄 Preparar texto con formato
     const lines = [
-      `${msg.nombre}`,
-      `${msg.telefono}`,
-      `${msg.direccion}`,
-      `${msg.ciudad_departamento}`,
-      `${msg.producto}`,
+      msg.nombre,
+      msg.cedula,
+      msg.telefono,
+      msg.direccion,
+      msg.ciudad_departamento,
+      msg.producto,
       msg.observaciones ? `Obs: ${msg.observaciones}` : '',
     ].filter(Boolean);
 
@@ -57,6 +58,7 @@ export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array>
     const maxWidth = cardWidth - 25;
 
     for (const line of lines) {
+      if (!line) continue;
       const words = line.split(' ');
       let currentLine = '';
 
