@@ -13,34 +13,31 @@
  *  - null si NO es celular
  */
 export function normalizeColombiaMobile(text: string): string | null {
-    // Quitar todo lo que no sea dígito
     const digits = text.replace(/\D/g, "");
 
-    // Formato estándar: 10 dígitos y empieza por 3
-    const isTenDigitsMobile = /^3\d{9}$/.test(digits);
-    if (isTenDigitsMobile) {
-        return digits; // ya está normalizado
+    // Si viene con prefijo internacional y empieza en 3
+    if (/^00357\d+/.test(digits)) {
+        const num = digits.slice(5);
+        return num.length >= 10 && num.startsWith("3") ? num.slice(0, 10) : null;
     }
 
-    // Formato con prefijo 57 (ej: 573001234567)
-    const isPrefixedMobile57 = /^573\d{9}$/.test(digits);
-    if (isPrefixedMobile57) {
-        return digits.slice(2); // quitar "57"
+    // +57 o 57
+    if (/^57\d+/.test(digits)) {
+        const num = digits.slice(2);
+        return num.length >= 10 && num.startsWith("3") ? num.slice(0, 10) : null;
     }
 
-    // Formato con 057 (ej: 0573001234567)
-    const isPrefixedMobile057 = /^0573\d{9}$/.test(digits);
-    if (isPrefixedMobile057) {
-        return digits.slice(3); // quitar "057"
+    // 057
+    if (/^057\d+/.test(digits)) {
+        const num = digits.slice(3);
+        return num.length >= 10 && num.startsWith("3") ? num.slice(0, 10) : null;
     }
 
-    // Formato internacional con 00357 (ej: 003573001234567)
-    const isInternational = /^003573\d{9}$/.test(digits);
-    if (isInternational) {
-        return digits.slice(4); // quitar "00357"
+    // Caso normal: mínimo 10 dígitos y empieza en 3
+    if (digits.startsWith("3") && digits.length >= 10) {
+        return digits.slice(0, 10);
     }
 
-    // Si no cumple, no es celular
     return null;
 }
 

@@ -1,13 +1,12 @@
 'use client';
 import React, { useRef, useState } from 'react';
-import { parseTextFile, Message } from '@/lib/parser';
+import { getMessages, Message } from '@/lib/parser';
 
 interface FileUploadProps {
-  selectedDate: string;
   onParsed: (messages: Message[]) => void;
 }
 
-export default function FileUpload({ selectedDate, onParsed }: FileUploadProps) {
+export default function FileUpload({ onParsed }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,7 +23,7 @@ export default function FileUpload({ selectedDate, onParsed }: FileUploadProps) 
     try {
       const text = await file.text();
 
-      const parsed = parseTextFile(text);
+      const parsed = getMessages(text);
       console.log('✅ Mensajes parseados:', parsed);
 
       if (parsed.length === 0) {

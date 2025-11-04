@@ -16,9 +16,14 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(today);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<boolean[]>([]);
-  const [saving, setSaving] = useState(false);
   const [selectAll, setSelectAll] = useState(true); // 🆕 Estado para controlar selección global
   const [loading, setLoading] = useState(true); // 🆕 Para mostrar “Cargando registros...”
+
+
+  function resetMessages() {
+    setMessages([]);
+    setSelectedDate(today);
+  }
 
   // 🔒 Verificar sesión activa al cargar el dashboard
   useEffect(() => {
@@ -73,16 +78,13 @@ export default function DashboardPage() {
   }
 
   // 💾 Guardar los mensajes cargados en Supabase
-  const handleSaveToDB = async () => {
+  const handleSaveToDB = async (messageList: Message[]) => {
     try {
-      setSaving(true);
-      await saveMessages(messages);
+      await saveMessages(messageList);
       alert('✅ Registros guardados correctamente');
     } catch (err) {
       console.error(err);
       alert('❌ Error al guardar los registros');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -131,44 +133,41 @@ export default function DashboardPage() {
         {selectedDate && <DateSelector value={selectedDate} onChange={setSelectedDate} />}
 
         <FileUpload
-          selectedDate={selectedDate || new Date().toISOString().slice(0, 10)}
-          onParsed={(msgs) => {
+          onParsed={async (msgs) => {
             const fechas = [...new Set(msgs.map((m) => m.date))];
             const maxDate = fechas.sort().reverse()[0];
+            resetMessages()
+            await handleSaveToDB(msgs);
             setSelectedDate(maxDate);
-            const filtered = msgs.filter((m) => m.date === maxDate);
-            setMessages(filtered);
-            setSelected(filtered.map(() => true));
-            setSelectAll(true);
           }}
         />
 
         {/* 🆕 Botón seleccionar todo */}
-        {messages.length > 0 && (
+        {/* {messages.length > 0 && (
           <button
             onClick={toggleSelectAll}
             className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md transition-colors"
           >
             {selectAll ? 'Deseleccionar todo' : 'Seleccionar todo'}
           </button>
-        )}
+        )} */}
 
         {messages.length > 0 && (
           <>
-            <button
+            {/* <button
               onClick={handleSaveToDB}
               disabled={saving}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:opacity-50"
             >
               {saving ? 'Guardando...' : 'Guardar en BD'}
-            </button>
+            </button> */}
 
             <button
               onClick={() => {
                 const selectedMessages = messages.filter((_, i) => selected[i]);
                 openPdf(selectedMessages);
               }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
             >
               Generar PDF
             </button>

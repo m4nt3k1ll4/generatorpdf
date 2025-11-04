@@ -1,7 +1,7 @@
 create extension if not exists "uuid-ossp";
 
 create table if not exists public.messages (
-    id uuid default uuid_generate_v4() primary key,
+    id text not null primary key,
     date date not null,
     nombre text not null,
     telefono text not null,
