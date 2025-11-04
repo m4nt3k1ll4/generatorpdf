@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
 import { getColombiaMobile } from "./phoneUtils";
 
 export type Message = {
@@ -13,14 +13,44 @@ export type Message = {
   observaciones?: string;
 };
 
-const whatsappHeaderRegex = /\[\d{2}\/\d{2}\/\d{2},.*?\]/;
+export type PedidosSection = {
+  dia: string | null;
+  titulo: string;
+  raw: string;
+  messages: Message[];
+};
 
-/* --- Helpers --- */
-function splitBlocks(content: string) {
-  return content
-    .split(whatsappHeaderRegex) // Dividir por encabezados de WhatsApp
-    .map(b => b.trim()) // Eliminar espacios en blanco
-    .filter(b => b.length > 0); // Filtrar bloques vacíos
+const whatsappHeaderRegex = /\[\d{2}\/\d{2}\/\d{2},.*?\]/g;
+
+function splitBlocksWithDates(content: string) {
+  const headers = content.match(whatsappHeaderRegex) || []; // Captura las fechas
+  const blocks = content
+    .split(whatsappHeaderRegex)
+    .map(b => b.trim())
+    .filter(Boolean);
+
+  return blocks.map((block, i) => ({
+    header: parseWhatsappDateColombia(headers[i]), // fecha original
+    text: block                 // texto del bloque
+  }));
+}
+
+function parseWhatsappDateColombia(header: string): Date {
+  const cleaned = header
+    .replace(/\[|\]/g, "")
+    .replace(/\u202F/g, " ") // limpia espacio unicode de WhatsApp
+    .trim();
+
+  const [datePart, timePartRaw] = cleaned.split(", ");
+
+  const timePart = timePartRaw
+    .replace("a.m.", "AM")
+    .replace("p.m.", "PM");
+
+  const dateString = `${datePart} ${timePart}`;
+
+  // Mantiene fecha en Colombia (si local machine está en UTC-05)
+  return parse(dateString, "dd/MM/yy hh:mm:ss a", new Date());
 }
 
 function splitLines(block: string) {
@@ -85,10 +115,11 @@ function today() {
 /* --- Main parser --- */
 export function parseTextFile(content: string): Message[] {
   const results: Message[] = [];
-  const blocks = splitBlocks(content);
+  const blocks = splitBlocksWithDates(content);
 
   for (const block of blocks) {
-    const lines = splitLines(block);
+    const lines = splitLines(block.text);
+    if (lines.length < 4) continue; // Mínimo 4 líneas requeridas
     const nombre = parseName(lines[0]);
 
     const { telefono, cedula, indexStart } = parsePhoneOrCedula(lines);
