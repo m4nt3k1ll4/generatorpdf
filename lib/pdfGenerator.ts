@@ -1,206 +1,162 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont } from 'pdf-lib';
-import { Message } from '@/lib/parser';
+import type { Message } from '@/lib/parser';
 
-/**
- * Genera un PDF con 9 tarjetas (3x3) por hoja, con wrap de texto y sin usar "\n".
- *
- * @param messages Array de mensajes
- * @param opts Opciones opcionales: { ttfUrl?: string } para fuente Unicode
- * @returns bytes del PDF
- */
-export async function generatePdfBytes(
-  messages: Message[],
-  opts?: { ttfUrl?: string } // opcional: pasa /fonts/DejaVuSans.ttf o similar
-): Promise<Uint8Array> {
-  // --- Parámetros de layout ---
-  const pageWidth = 595;  // A4 width (pt)
-  const pageHeight = 842; // A4 height (pt)
-  const margin = 40;
-  const cols = 3;
-  const rows = 3;
-  const gap = 10;         // margen interno de tarjeta
-  const cardWidth = (pageWidth - margin * 2) / cols;
-  const cardHeight = (pageHeight - margin * 2) / rows;
+/** PDF 3x3 con diseño simple, espaciado afinado y centrado vertical del contenido */
+export async function generatePdfBytes(messages: Message[]): Promise<Uint8Array> {
+  // --- Página y grilla ---
+  const pageWidth = 595, pageHeight = 842;      // A4 en puntos
+  const margin = 36, cols = 3, rows = 3;
+  const gapX = 12, gapY = 12;
 
-  const fontSize = 12;
-  const lineHeight = 16;
+  const cardWidth = (pageWidth - margin * 2 - gapX * (cols - 1)) / cols;
+  const cardHeight = (pageHeight - margin * 2 - gapY * (rows - 1)) / rows;
 
-  // --- Utilidades de texto ---
+  // --- Padding interior del rectángulo ---
+  const padX = 16;     // un poco más que antes para equilibrio visual
+  const padY = 16;
+
+  // --- Tipografías / jerarquía ---
+  const nameFontSize = 12.6;   // nombre (negrita)
+  const bodyFontSize = 11.8;   // resto
+  const nameLine = 18;         // line-height del nombre
+  const bodyLine = 16;         // line-height del cuerpo
+
+  // Separación entre bloques (nombre/teléfono/dirección/etc.)
+  const blockGap = 3;          // espacio consistente entre bloques
+
+  // ---------- Helpers de texto (nunca pasar \n a drawText) ----------
   const sanitize = (s: string) =>
-    (s ?? '')
-      .replace(/[\u0000-\u001F]/g, ' ') // quita caracteres de control
-      .replace(/\s+/g, ' ')             // compacta espacios múltiples
-      .trim();
+    (s ?? '').replace(/[\u0000-\u001F]/g, ' ').replace(/\s+/g, ' ').trim();
 
   const splitByNewlines = (s: string) =>
-    (s ?? '').split(/\r?\n/).map(part => part.trim()).filter(Boolean);
+    (s ?? '').split(/\r?\n/).map(t => t.trim()).filter(Boolean);
 
-  // Parte palabras MUY largas (URLs, referencias) para que quepan
   const breakLongToken = (
-    token: string,
-    font: PDFFont,
-    maxWidth: number,
-    size: number
-  ): string[] => {
+    token: string, font: PDFFont, maxWidth: number, size: number
+  ) => {
     if (font.widthOfTextAtSize(token, size) <= maxWidth) return [token];
-    const chars = [...token];
-    const parts: string[] = [];
-    let curr = '';
-    for (const ch of chars) {
-      const test = curr + ch;
-      if (font.widthOfTextAtSize(test, size) > maxWidth) {
-        if (curr.length === 0) {
-          // carácter aislado excede (fuente gigante) — fuerza avance
-          parts.push(ch);
-        } else {
-          parts.push(curr);
-          curr = ch;
-        }
-      } else {
-        curr = test;
-      }
+    const out: string[] = []; let buf = '';
+    for (const ch of [...token]) {
+      const test = buf + ch;
+      if (font.widthOfTextAtSize(test, size) > maxWidth) { if (buf) out.push(buf); buf = ch; }
+      else { buf = test; }
     }
-    if (curr) parts.push(curr);
-    return parts;
-  };
-
-  // Word-wrap que respeta ancho y también corta tokens largos
-  const wrapLine = (
-    text: string,
-    font: PDFFont,
-    maxWidth: number,
-    size: number
-  ): string[] => {
-    const tokens = text.split(' ').filter(Boolean);
-    const out: string[] = [];
-    let current = '';
-
-    const pushCurrent = () => {
-      if (current) {
-        out.push(current);
-        current = '';
-      }
-    };
-
-    for (const tok of tokens) {
-      // Si el token es demasiado ancho, partirlo en sub-tokens
-      const subtokens = breakLongToken(tok, font, maxWidth, size);
-      for (const sub of subtokens) {
-        const test = current ? `${current} ${sub}` : sub;
-        if (font.widthOfTextAtSize(test, size) > maxWidth) {
-          pushCurrent();
-          current = sub;
-        } else {
-          current = test;
-        }
-      }
-    }
-    pushCurrent();
+    if (buf) out.push(buf);
     return out;
   };
 
-  // Crea el bloque de líneas envuelto (considera \n como “nueva línea dura”)
-  const makeWrappedBlock = (
-    raw: string,
-    font: PDFFont,
-    maxWidth: number,
-    size: number
-  ): string[] => {
-    const clean = sanitize(raw);
-    if (!clean) return [];
-    const hardLines = splitByNewlines(clean);
-    const final: string[] = [];
-    for (const hl of hardLines) {
-      final.push(...wrapLine(hl, font, maxWidth, size));
+  const wrapLine = (
+    text: string, font: PDFFont, maxWidth: number, size: number
+  ) => {
+    const tokens = text.split(' ').filter(Boolean);
+    const lines: string[] = []; let curr = '';
+    const push = () => { if (curr) { lines.push(curr); curr = ''; } };
+    for (const tok of tokens) {
+      for (const p of breakLongToken(tok, font, maxWidth, size)) {
+        const test = curr ? `${curr} ${p}` : p;
+        if (font.widthOfTextAtSize(test, size) > maxWidth) { push(); curr = p; }
+        else { curr = test; }
+      }
     }
-    return final;
+    push();
+    return lines;
   };
 
-  // --- PDF ---
+  const makeWrappedBlock = (
+    raw: string, font: PDFFont, maxWidth: number, size: number
+  ) => {
+    const clean = sanitize(raw); if (!clean) return [] as string[];
+    const out: string[] = [];
+    for (const h of splitByNewlines(clean)) out.push(...wrapLine(h, font, maxWidth, size));
+    return out;
+  };
+
+  // --- Documento + fuentes estándar (Helvetica) ---
   const pdfDoc = await PDFDocument.create();
-
-  // Fuente:
-  //  A) Simple: Helvetica (WinAnsi). Úsala si NO hay emojis/símbolos raros.
-  //  B) Unicode: pasa opts.ttfUrl (p.ej. "/fonts/DejaVuSans.ttf") para soportar todo.
-  let bodyFont: PDFFont;
-  let boldFont: PDFFont;
-
-  if (opts?.ttfUrl) {
-    // Fuente Unicode (recomendado si hay emojis o comillas “tipográficas”)
-    const fontBytes = await fetch(opts.ttfUrl).then(r => r.arrayBuffer());
-    bodyFont = await pdfDoc.embedFont(fontBytes as ArrayBuffer);
-    // Si quieres un bold real, usa otra TTF bold; si no, reutilizamos la misma
-    boldFont = bodyFont;
-  } else {
-    // Helvetica estándar (no Unicode). No admite emojis ni ciertos símbolos.
-    bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  }
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   let page = pdfDoc.addPage([pageWidth, pageHeight]);
   let i = 0;
 
   for (const msg of messages) {
-    // Nueva página cada 9 tarjetas
-    if (i > 0 && i % (rows * cols) === 0) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-    }
+    if (i > 0 && i % (rows * cols) === 0) page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-    const cardIndex = i % (rows * cols);
-    const row = Math.floor(cardIndex / cols);
-    const col = cardIndex % cols;
+    const slot = i % (rows * cols);
+    const row = Math.floor(slot / cols), col = slot % cols;
+    const x = margin + col * (cardWidth + gapX);
+    const y = pageHeight - margin - (row + 1) * cardHeight - row * gapY;
 
-    const x = margin + col * cardWidth;
-    const y = pageHeight - margin - (row + 1) * cardHeight;
-
-    // Marco de la tarjeta
+    // Marco (diseño original)
     page.drawRectangle({
-      x,
-      y,
-      width: cardWidth - gap,
-      height: cardHeight - gap,
-      borderColor: rgb(0.2, 0.2, 0.2),
-      borderWidth: 1,
+      x, y, width: cardWidth, height: cardHeight,
+      borderColor: rgb(0.78, 0.78, 0.80), borderWidth: 1
     });
 
-    // Contenido de la tarjeta
-    const fields: Array<string> = [
-      msg?.nombre || '',
-      msg?.cedula || '',
-      msg?.telefono || '',
-      msg?.direccion || '',
-      msg?.ciudad_departamento || '',
-      msg?.producto || '',
-      msg?.observaciones || '',
-    ].filter(Boolean);
+    // Área interna y medidas
+    const innerLeft = x + padX;
+    const innerRight = x + cardWidth - padX;
+    const innerTop = y + cardHeight - padY;
+    const innerBottom = y + padY;
+    const maxWidth = innerRight - innerLeft;
+    const availableH = innerTop - innerBottom;
 
-    const textX = x + 10;
-    const usableWidth = cardWidth - gap - 15;
-    let cursorY = y + cardHeight - 25; // inicio alto de la tarjeta
-    const minY = y + 10; // margen inferior de seguridad
+    // Orden de campos (sin labels) con nombre y producto en negrita
+    const rawFields: Array<{ text?: string | null; bold?: boolean; size?: number; line?: number }> = [
+      { text: msg?.nombre, bold: true, size: nameFontSize, line: nameLine },
+      { text: msg?.telefono, bold: false, size: bodyFontSize, line: bodyLine },
+      { text: msg?.direccion, bold: false, size: bodyFontSize, line: bodyLine },
+      { text: msg?.ciudad_departamento, bold: false, size: bodyFontSize, line: bodyLine },
+      { text: msg?.observaciones, bold: false, size: bodyFontSize, line: bodyLine },
+      { text: msg?.producto, bold: true, size: bodyFontSize, line: bodyLine }, // producto al final en bold
+    ].filter(f => !!f.text);
 
-    for (const raw of fields) {
-      // Genera las líneas envueltas (sin \n)
-      const wrapped = makeWrappedBlock(raw, bodyFont, usableWidth, fontSize);
+    // 1) PREPARAR LAYOUT: envolver y medir todo para centrar verticalmente
+    type Block = { lines: string[]; font: PDFFont; size: number; lineH: number };
+    const blocks: Block[] = [];
 
-      for (const line of wrapped) {
-        // Si no hay espacio vertical, corta con "…" y sigue a la siguiente tarjeta
-        if (cursorY < minY) {
-          // Reemplaza la última línea escrita por una con “…” si se desea. Aquí, solo cortamos.
-          // (Opcional: dibuja una línea con “…”.)
-          break;
-        }
+    for (const f of rawFields) {
+      const font = f.bold ? bold : regular;
+      const size = f.size ?? bodyFontSize;
+      const lineH = f.line ?? bodyLine;
+      const lines = makeWrappedBlock(String(f.text), font, maxWidth, size);
+      if (lines.length > 0) blocks.push({ lines, font, size, lineH });
+    }
+
+    // Alto total del contenido (líneas + gaps entre bloques)
+    const totalHeight = blocks.reduce((acc, b, idx) => {
+      const linesH = b.lines.length * b.lineH;
+      const gap = idx === blocks.length - 1 ? 0 : blockGap;
+      return acc + linesH + gap;
+    }, 0);
+
+    // 2) CALCULAR Y DEJAR CENTRADO VERTICAL (si cabe); si no, pegado arriba
+    let startY: number;
+    if (totalHeight <= availableH) {
+      // centrado dentro del área útil
+      const free = availableH - totalHeight;
+      startY = innerTop - free / 2; // mismo respiro arriba y abajo
+    } else {
+      // no cabe → empezar arriba y dejar que recorte al fondo
+      startY = innerTop;
+    }
+
+    // 3) PINTAR
+    let cursorY = startY;
+    for (const b of blocks) {
+      for (const line of b.lines) {
+        if (cursorY < innerBottom) break; // evita overflow
         page.drawText(line, {
-          x: textX,
+          x: innerLeft,
           y: cursorY,
-          size: fontSize,
-          font: bodyFont,
+          size: b.size,
+          font: b.font,
+          color: rgb(0.1, 0.1, 0.12)
         });
-        cursorY -= lineHeight;
+        cursorY -= b.lineH;
       }
-
-      // Si ya no hay espacio, no intentes escribir más campos
-      if (cursorY < minY) break;
+      cursorY -= blockGap;
+      if (cursorY < innerBottom) break;
     }
 
     i++;
