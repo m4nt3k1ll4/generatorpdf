@@ -14,10 +14,13 @@ import { Search, CheckSquare, Square } from 'lucide-react';
 
 const today = format(new Date(), "yyyy-MM-dd");
 
+// normaliza id a string
+const mid = (m: Message) => String((m as any).id);
+
 export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(today);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [selected, setSelected] = useState<boolean[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()); // ✅ por ID
   const [selectAll, setSelectAll] = useState(true);
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +30,7 @@ export default function DashboardPage() {
 
   function resetMessages(date = today) {
     setMessages([]);
-    setSelected([]);
+    setSelectedIds(new Set());
     setSelectAll(false);
     setOnlySelected(false);
     setQuery('');
@@ -44,17 +47,13 @@ export default function DashboardPage() {
   // Última fecha con registros
   useEffect(() => {
     async function loadLatestDate() {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('messages')
         .select('date')
         .order('date', { ascending: false })
         .limit(1);
 
-      if (!error && data && data.length > 0) {
-        setSelectedDate(data[0].date);
-      } else {
-        setSelectedDate(today);
-      }
+      setSelectedDate(data && data.length > 0 ? data[0].date : today);
     }
     loadLatestDate();
   }, []);
@@ -66,7 +65,8 @@ export default function DashboardPage() {
       setLoading(true);
       const loaded = await loadMessagesByDate(selectedDate);
       setMessages(loaded);
-      setSelected(loaded.map(() => true));
+      // marcar todos seleccionados por defecto
+      setSelectedIds(new Set(loaded.map(mid)));
       setSelectAll(true);
       setLoading(false);
     }
@@ -87,8 +87,8 @@ export default function DashboardPage() {
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
     } catch (e) {
-      alert('❌ No se pudo generar el PDF.');
       console.error(e);
+      alert('❌ No se pudo generar el PDF.');
     }
   }
 
@@ -103,43 +103,31 @@ export default function DashboardPage() {
     }
   };
 
-  // Selección individual
-  const handleSelectChange = (index: number, checked: boolean) => {
-    setSelected(prev => {
-      const copy = [...prev];
-      copy[index] = checked;
-      setSelectAll(copy.every(v => v));
-      return copy;
-    });
-  };
-
+  // ✅ Actualización con re-render correcto
   const handleUpdate = async (updated: Message) => {
+    const id = mid(updated);
+    // UI primero
+    setMessages(prev => prev.map(m => (mid(m) === id ? { ...m, ...updated } as Message : m)));
     try {
-      await updateMessage((updated as any).id, updated);
-      setMessages(prev =>
-        prev.map(m => (m.id === (updated as any).id ? { ...m, ...updated } : m))
-      );
+      await updateMessage(id, updated);
     } catch (e) {
       console.error(e);
       alert("❌ No se pudo guardar el cambio.");
     }
   };
 
-  // Seleccionar/Deseleccionar todos
+  // ✅ Seleccionar/Deseleccionar todos por ID
   const toggleSelectAll = () => {
     const newState = !selectAll;
     setSelectAll(newState);
-    setSelected(messages.map(() => newState));
+    setSelectedIds(newState ? new Set(messages.map(mid)) : new Set());
   };
 
   const isEmpty = !loading && messages.length === 0;
 
   // -------- Visibilidad: filtros y contadores --------
   const total = messages.length;
-  const selectedCount = useMemo(
-    () => selected.filter(Boolean).length,
-    [selected]
-  );
+  const selectedCount = selectedIds.size;
 
   const filtered = useMemo(() => {
     let list = messages;
@@ -148,34 +136,24 @@ export default function DashboardPage() {
       const q = query.toLowerCase();
       list = list.filter(m => {
         const fields = [
-          m.nombre,
-          m.telefono,
-          (m as any).ciudad_departamento,
-          m.producto,
-          m.direccion,
-          m.observaciones,
-        ]
-          .filter(Boolean)
-          .map(String)
-          .map(s => s.toLowerCase());
+          m.nombre, m.telefono, (m as any).ciudad_departamento,
+          m.producto, m.direccion, m.observaciones,
+        ].filter(Boolean).map(String).map(s => s.toLowerCase());
         return fields.some(f => f.includes(q));
       });
     }
 
     if (onlySelected) {
-      list = list.filter((_, i) => selected[i]);
+      list = list.filter(m => selectedIds.has(mid(m)));
     }
 
     return list;
-  }, [messages, selected, query, onlySelected]);
+  }, [messages, selectedIds, query, onlySelected]);
 
-  const filteredSelectedCount = useMemo(() => {
-    // para mostrar cuántos seleccionados quedan en la lista filtrada
-    return filtered.reduce((acc, _, idxFiltered) => {
-      const originalIndex = messages.indexOf(filtered[idxFiltered]);
-      return acc + (selected[originalIndex] ? 1 : 0);
-    }, 0);
-  }, [filtered, messages, selected]);
+  const filteredSelectedCount = useMemo(
+    () => filtered.reduce((acc, m) => acc + (selectedIds.has(mid(m)) ? 1 : 0), 0),
+    [filtered, selectedIds]
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors">
@@ -254,10 +232,7 @@ export default function DashboardPage() {
               </label>
 
               <button
-                onClick={() => {
-                  const selectedMessages = messages.filter((_, i) => selected[i]);
-                  openPdf(selectedMessages);
-                }}
+                onClick={() => openPdf(messages.filter(m => selectedIds.has(mid(m))))}
                 disabled={selectedCount === 0}
                 className="inline-flex items-center gap-2 rounded-md bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white px-4 py-2 text-sm transition-colors"
               >
@@ -271,12 +246,8 @@ export default function DashboardPage() {
 
           {/* Resumen compacto */}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-            <span>
-              Total: <b>{total}</b>
-            </span>
-            <span>
-              Seleccionados: <b>{selectedCount}</b>
-            </span>
+            <span> Total: <b>{total}</b> </span>
+            <span> Seleccionados: <b>{selectedCount}</b> </span>
             {query && (
               <span>
                 Filtrados: <b>{filtered.length}</b> (seleccionados en filtro: <b>{filteredSelectedCount}</b>)
@@ -292,10 +263,7 @@ export default function DashboardPage() {
         {loading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-44 rounded-lg border bg-white dark:bg-slate-800 overflow-hidden"
-              >
+              <div key={i} className="h-44 rounded-lg border bg-white dark:bg-slate-800 overflow-hidden">
                 <div className="h-full animate-pulse bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700" />
               </div>
             ))}
@@ -321,17 +289,23 @@ export default function DashboardPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filtered.map((msg) => {
-                  const i = messages.indexOf(msg);
-                  const key = (msg as any).id ?? i;
+                  const id = mid(msg);
                   return (
                     <MessageCard
-                      key={key}
+                      key={id}
                       message={msg}
-                      selected={selected[i]}
-                      onUpdate={(updated) => handleUpdate(updated)}
-                      onSelectChange={(checked) => handleSelectChange(i, checked)}
+                      selected={selectedIds.has(id)}
+                      onUpdate={handleUpdate}
+                      onToggleSelect={(idSel, checked) => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (checked) next.add(idSel); else next.delete(idSel);
+                          // sincroniza el botón “(de)seleccionar todo”
+                          setSelectAll(next.size === messages.length && messages.length > 0);
+                          return next;
+                        });
+                      }}
                     />
-
                   );
                 })}
               </div>
