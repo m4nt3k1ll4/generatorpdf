@@ -11,11 +11,16 @@ import LogoutButton from '@/app/components/LogoutButton';
 import { Message } from '@/lib/parser';
 import { loadMessagesByDate, saveMessages, updateMessage } from '@/lib/messagesApi';
 import { Search, CheckSquare, Square } from 'lucide-react';
+import { enrichPrices, defaultCatalog } from '@/lib/priceCatalog';
 
 const today = format(new Date(), "yyyy-MM-dd");
 
 // normaliza id a string
 const mid = (m: Message) => String((m as any).id);
+
+// formateador de COP
+const money = (n: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 
 export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(today);
@@ -58,15 +63,16 @@ export default function DashboardPage() {
     loadLatestDate();
   }, []);
 
-  // Cargar mensajes de la fecha
+  // Cargar mensajes de la fecha (con enriquecimiento de precios por catálogo)
   useEffect(() => {
     async function fetchMessages() {
       if (!selectedDate) return;
       setLoading(true);
       const loaded = await loadMessagesByDate(selectedDate);
-      setMessages(loaded);
+      const enriched = enrichPrices(loaded, defaultCatalog); // ⬅️ A (autocompleta precio total por producto)
+      setMessages(enriched);
       // marcar todos seleccionados por defecto
-      setSelectedIds(new Set(loaded.map(mid)));
+      setSelectedIds(new Set(enriched.map(mid)));
       setSelectAll(true);
       setLoading(false);
     }
@@ -103,7 +109,7 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ Actualización con re-render correcto
+  // ✅ Actualización con re-render correcto (B permite editar precio total manualmente)
   const handleUpdate = async (updated: Message) => {
     const id = mid(updated);
     // UI primero
@@ -153,6 +159,17 @@ export default function DashboardPage() {
   const filteredSelectedCount = useMemo(
     () => filtered.reduce((acc, m) => acc + (selectedIds.has(mid(m)) ? 1 : 0), 0),
     [filtered, selectedIds]
+  );
+
+  // Subtotales (precio es TOTAL)
+  const subtotalAll = useMemo(
+    () => messages.reduce((acc, m) => acc + (typeof m.precio === 'number' ? m.precio : 0), 0),
+    [messages]
+  );
+
+  const subtotalSelected = useMemo(
+    () => messages.reduce((acc, m) => acc + (selectedIds.has(mid(m)) && typeof m.precio === 'number' ? m.precio : 0), 0),
+    [messages, selectedIds]
   );
 
   return (
@@ -248,6 +265,8 @@ export default function DashboardPage() {
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
             <span> Total: <b>{total}</b> </span>
             <span> Seleccionados: <b>{selectedCount}</b> </span>
+            <span> Subtotal (todos): <b>{money(subtotalAll)}</b> </span>
+            <span> Subtotal (selección): <b>{money(subtotalSelected)}</b> </span>
             {query && (
               <span>
                 Filtrados: <b>{filtered.length}</b> (seleccionados en filtro: <b>{filteredSelectedCount}</b>)

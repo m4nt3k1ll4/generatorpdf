@@ -10,6 +10,7 @@ export type Message = {
   ciudad_departamento: string;
   producto: string;
   cantidad?: number;
+  precio?: number;
   observaciones?: string;
   created_at?: string;
 };

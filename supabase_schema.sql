@@ -20,3 +20,6 @@ ADD COLUMN IF NOT EXISTS observaciones TEXT;
 
 ALTER TABLE messages
 ADD COLUMN IF NOT EXISTS cedula TEXT;
+
+alter table messages
+add column if not exists precio integer;
