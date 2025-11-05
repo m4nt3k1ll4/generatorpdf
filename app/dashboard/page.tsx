@@ -25,13 +25,13 @@ export default function DashboardPage() {
   const [query, setQuery] = useState('');
   const [onlySelected, setOnlySelected] = useState(false);
 
-  function resetMessages() {
+  function resetMessages(date = today) {
     setMessages([]);
     setSelected([]);
     setSelectAll(false);
     setOnlySelected(false);
     setQuery('');
-    setSelectedDate(today);
+    setSelectedDate(date);
   }
 
   // Verificar sesión
@@ -113,10 +113,16 @@ export default function DashboardPage() {
     });
   };
 
-  // Actualizar registro
-  const handleUpdate = (updated: Message) => {
-    // Asumimos que Message tiene id (lo usas en updateMessage)
-    updateMessage((updated as any).id, updated);
+  const handleUpdate = async (updated: Message) => {
+    try {
+      await updateMessage((updated as any).id, updated);
+      setMessages(prev =>
+        prev.map(m => (m.id === (updated as any).id ? { ...m, ...updated } : m))
+      );
+    } catch (e) {
+      console.error(e);
+      alert("❌ No se pudo guardar el cambio.");
+    }
   };
 
   // Seleccionar/Deseleccionar todos
