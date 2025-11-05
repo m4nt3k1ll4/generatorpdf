@@ -1,29 +1,39 @@
 "use client";
 
 import * as React from "react";
-import { format, parse } from "date-fns";
+import {
+  format,
+  parse,
+  addDays,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  isSameMonth,
+  isSameDay,
+  eachDayOfInterval,
+} from "date-fns";
+import { es } from "date-fns/locale";
 import { Calendar as CalendarIcon } from "lucide-react";
 import * as Pop from "@radix-ui/react-popover";
-import { es } from "date-fns/locale";
 
 export default function DateSelector({
-  value,
+  value, // "yyyy-MM-dd"
   onChange,
 }: {
-  value: string; // "yyyy-MM-dd"
+  value: string;
   onChange: (val: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
 
-  // Derivado del prop SIEMPRE
+  // Derivar fecha desde el prop
   const selected = React.useMemo(
     () => parse(value, "yyyy-MM-dd", new Date()),
     [value]
   );
 
   const handleSelect = (date: Date) => {
-    // Mantén el día exacto (sin shift)
-    onChange(format(date, "yyyy-MM-dd"));
+    onChange(format(date, "yyyy-MM-dd")); // Mantiene el día exacto
     setOpen(false);
   };
 
@@ -41,6 +51,7 @@ export default function DateSelector({
             </span>
           </button>
         </Pop.Trigger>
+
         <Pop.Content
           side="bottom"
           align="start"
@@ -64,19 +75,22 @@ function CalendarGrid({
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
   );
 
-  // recalcular mes visible si cambia el seleccionado desde afuera
+  // Sincroniza el mes visible si cambia desde fuera
   React.useEffect(() => {
-    setCurrentMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+    setCurrentMonth(
+      new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+    );
   }, [selectedDate]);
 
-  const days = Array.from({ length: 31 }, (_, i) => i + 1).filter(
-    (d) =>
-      new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        d
-      ).getMonth() === currentMonth.getMonth()
-  );
+  const weekStartsOn = 1; // Lunes
+
+  // Rango completo de semanas que cubren el mes (incluye desbordes)
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const gridStart = startOfWeek(monthStart, { locale: es, weekStartsOn });
+  const gridEnd = endOfWeek(monthEnd, { locale: es, weekStartsOn });
+
+  const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   const handlePrev = () =>
     setCurrentMonth(
@@ -87,30 +101,60 @@ function CalendarGrid({
       new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)
     );
 
+  // Encabezados de la semana (L–D), claves únicas por índice
+  const weekdayHeaders = Array.from({ length: 7 }, (_, i) =>
+    format(addDays(gridStart, i), "EEEEE", { locale: es }).toUpperCase()
+  );
+
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
-        <button onClick={handlePrev} className="px-2 text-gray-500 hover:text-black">‹</button>
+        <button
+          onClick={handlePrev}
+          className="px-2 text-gray-500 hover:text-black"
+        >
+          ‹
+        </button>
         <span className="text-sm font-medium">
           {format(currentMonth, "MMMM yyyy", { locale: es })}
         </span>
-        <button onClick={handleNext} className="px-2 text-gray-500 hover:text-black">›</button>
+        <button
+          onClick={handleNext}
+          className="px-2 text-gray-500 hover:text-black"
+        >
+          ›
+        </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs">
-        {["L", "M", "X", "J", "V", "S", "D"].map((d) => (
-          <div key={d} className="font-semibold text-gray-500">{d}</div>
+
+      <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
+        {weekdayHeaders.map((d, i) => (
+          <div key={`wd-${i}`} className="font-semibold text-gray-500">
+            {d}
+          </div>
         ))}
-        {days.map((d) => {
-          const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d);
-          const isSelected = date.toDateString() === selectedDate.toDateString();
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {days.map((date) => {
+          const inMonth = isSameMonth(date, currentMonth);
+          const selected = isSameDay(date, selectedDate);
+          const base =
+            "p-2 rounded-full text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2";
+          const cls = selected
+            ? "bg-blue-600 text-white"
+            : inMonth
+              ? "hover:bg-slate-200 dark:hover:bg-slate-700"
+              : "text-gray-400 hover:bg-slate-100 dark:hover:bg-slate-800";
+
           return (
             <button
-              key={d}
-              onClick={() => onSelect(date)}
-              className={`p-2 rounded-full text-sm ${isSelected ? "bg-blue-600 text-white" : "hover:bg-slate-200 dark:hover:bg-slate-700"
-                }`}
+              key={date.toISOString()} // única por día
+              onClick={() => inMonth && onSelect(date)}
+              disabled={!inMonth}
+              className={`${base} ${cls}`}
+              aria-label={format(date, "PPP", { locale: es })}
             >
-              {d}
+              {format(date, "d", { locale: es })}
             </button>
           );
         })}
