@@ -11,7 +11,8 @@ export async function saveMessages(messages: Message[]) {
   }
 }
 
-export async function updateMessage(id: string, fields: Partial<Message>) {
+export async function updateMessage(id: string | undefined, fields: Partial<Message>) {
+  if (!id) return;
   const { error } = await supabase
     .from('messages')
     .update(fields)

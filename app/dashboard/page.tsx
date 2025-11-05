@@ -8,7 +8,7 @@ import ThemeToggle from '@/app/components/ThemeToggle';
 import DateSelector from '@/app/components/DateSelector';
 import LogoutButton from '@/app/components/LogoutButton';
 import { Message } from '@/lib/parser';
-import { loadMessagesByDate, saveMessages } from '@/lib/messagesApi';
+import { loadMessagesByDate, saveMessages, updateMessage } from '@/lib/messagesApi';
 
 const today = format(new Date(), "yyyy-MM-dd");
 
@@ -100,12 +100,8 @@ export default function DashboardPage() {
   };
 
   // ✏️ Actualizar datos editados dentro de una tarjeta
-  const handleUpdate = (index: number, updated: Message) => {
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[index] = updated;
-      return copy;
-    });
+  const handleUpdate = (updated: Message) => {
+    updateMessage(updated.id, updated); // Actualizar en la base de datos
   };
 
   // 🆕 Seleccionar o deseleccionar todos los registros a la vez
@@ -191,7 +187,7 @@ export default function DashboardPage() {
             <MessageCard
               key={i}
               message={msg}
-              onUpdate={(updated) => handleUpdate(i, updated)}
+              onUpdate={(updated) => handleUpdate(updated)}
               onSelectChange={(checked) => handleSelectChange(i, checked)}
             />
           ))}
