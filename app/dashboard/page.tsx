@@ -167,6 +167,12 @@ export default function DashboardPage() {
             >
               Generar PDF
             </button>
+
+            {messages && (
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                {messages.length} venta{messages.length !== 1 ? 's' : ''} cargado{messages.length !== 1 ? 's' : ''}.
+              </span>
+            )}
           </>
         )}
       </div>
