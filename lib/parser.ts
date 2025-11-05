@@ -123,6 +123,11 @@ export function splitByPedidos(content: string) {
         observaciones,
       });
     }
+    const maxDate = messages.length
+      ? messages.reduce((max, m) => (m.date > max ? m.date : max), messages[0].date)
+      : null;
+
+    messages.forEach(m => { m.date = maxDate || m.date; });
 
     sections.push({
       dia,

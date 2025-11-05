@@ -203,11 +203,45 @@ export default function DashboardPage() {
 
               <FileUpload
                 onParsed={async (msgs) => {
-                  const fechas = [...new Set(msgs.map((m) => m.date))];
-                  const maxDate = fechas.sort().reverse()[0];
-                  resetMessages();
-                  await handleSaveToDB(msgs);
-                  setSelectedDate(maxDate);
+                  // 1) Traer última fecha registrada en BD (yyyy-MM-dd)
+                  const { data: lastRow, error: lastErr } = await supabase
+                    .from('messages')
+                    .select('date')
+                    .order('date', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                  if (lastErr) {
+                    console.warn('No se pudo consultar última fecha, continúo con todo el archivo:', lastErr);
+                  }
+                  const lastDateInDB: string | null = lastRow?.date ?? null;
+
+                  // 2) Filtrar SOLO mensajes con fecha > última fecha en BD
+                  // (comparación segura porque el formato es "yyyy-MM-dd")
+                  const newer = lastDateInDB
+                    ? msgs.filter(m => m.date > lastDateInDB)
+                    : msgs.slice(); // si BD está vacía, todo es nuevo
+
+                  // 3) Nada nuevo → feedback y no guardes
+                  if (newer.length === 0) {
+                    alert(lastDateInDB
+                      ? `No hay registros con fecha posterior a ${lastDateInDB}.`
+                      : 'No se encontraron registros en el archivo.');
+                    return;
+                  }
+
+                  // 4) Guarda SOLO los nuevos (tu saveMessages puede ser upsert o insert)
+                  try {
+                    resetMessages(); // limpia UI primero
+                    await saveMessages(newer);
+                    // Ajusta la fecha visible al máximo del batch nuevo guardado
+                    const maxDate = newer.map(m => m.date).sort().reverse()[0];
+                    setSelectedDate(maxDate);
+                    alert(`✅ Insertados: ${newer.length}${lastDateInDB ? ` (posteriores a ${lastDateInDB})` : ''}`);
+                  } catch (err) {
+                    console.error(err);
+                    alert('❌ Error al guardar los registros');
+                  }
                 }}
               />
             </div>

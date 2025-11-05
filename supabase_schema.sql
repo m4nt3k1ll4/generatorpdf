@@ -23,3 +23,13 @@ ADD COLUMN IF NOT EXISTS cedula TEXT;
 
 alter table messages
 add column if not exists precio integer;
+
+-- Para acelerar la consulta por fecha
+CREATE INDEX IF NOT EXISTS messages_date_idx ON public.messages(date);
+
+-- Clave única por id (si no la tienes)
+ALTER TABLE public.messages
+  ADD CONSTRAINT messages_id_unique UNIQUE (id);
+
+-- índice compuesto si consultas mucho por (date, id)
+CREATE INDEX IF NOT EXISTS messages_date_id_idx ON public.messages(date, id);
